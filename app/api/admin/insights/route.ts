@@ -1,13 +1,7 @@
 import { generateText, gateway } from "ai";
 import { client } from "@/sanity/lib/client";
-import {
-  ORDERS_LAST_7_DAYS_QUERY,
-  ORDER_STATUS_DISTRIBUTION_QUERY,
-  TOP_SELLING_PRODUCTS_QUERY,
-  PRODUCTS_INVENTORY_QUERY,
-  UNFULFILLED_ORDERS_QUERY,
-  REVENUE_BY_PERIOD_QUERY,
-} from "@/lib/sanity/queries/stats";
+import { ORDER_STATUS_DISTRIBUTION_QUERY, ORDERS_LAST_7_DAYS_QUERY, PRODUCTS_INVENTORY_QUERY, REVENUE_BY_PERIOD_QUERY, TOP_SELLING_PRODUCTS_QUERY, UNFULFILLED_ORDERS_QUERY } from "@/sanity/queries/stats";
+
 
 interface OrderItem {
   quantity: number;
