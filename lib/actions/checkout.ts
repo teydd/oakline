@@ -12,8 +12,12 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not defined");
 }
 
+const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
+  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
+  "2026-02-25.clover";
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-02-25.clover",
+  apiVersion: stripeApiVersion,
 });
 
 
@@ -118,6 +122,9 @@ export async function createCheckoutSession(
       sanityCustomerId,
       productIds: validatedItems.map((i) => i.product._id).join(","),
       quantities: validatedItems.map((i) => i.quantity).join(","),
+      productPrices: validatedItems
+        .map((i) => Math.round((i.product.price ?? 0) * 100))
+        .join(","),
     };
 
     // 8. Create Stripe Checkout Session
