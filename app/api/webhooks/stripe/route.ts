@@ -13,8 +13,12 @@ if (!process.env.STRIPE_WEBHOOK_SECRET) {
   throw new Error("STRIPE_WEBHOOK_SECRET is not defined");
 }
 
+const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
+  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
+  "2026-02-25.clover";
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-02-25.clover",
+  apiVersion: stripeApiVersion,
 });
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -90,9 +94,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
     const productIds = productIdsString.split(",");
     const quantities = quantitiesString.split(",").map(Number);
+    const productPricesString = session.metadata?.productPrices;
 
-    // Get line items from Stripe
-    const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+    if (!productPricesString) {
+      console.error("Missing productPrices metadata in checkout session");
+      return;
+    }
+
+    const productPrices = productPricesString.split(",").map(Number);
 
     // Build order items array
     const orderItems = productIds.map((productId, index) => ({
@@ -102,9 +111,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         _ref: productId,
       },
       quantity: quantities[index],
-      priceAtPurchase: lineItems.data[index]?.amount_total
-        ? lineItems.data[index].amount_total / 100
-        : 0,
+      priceAtPurchase: productPrices[index] / 100,
     }));
 
     // Generate order number
@@ -124,7 +131,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       : undefined;
 
     // Create order in Sanity with customer reference
-    const order = await writeClient.create({
+    const orderDoc = {
       _type: "order",
       orderNumber,
       ...(sanityCustomerId && {
@@ -141,19 +148,17 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       stripePaymentId,
       address,
       createdAt: new Date().toISOString(),
-    });
+    };
 
-    console.log(`Order created: ${order._id} (${orderNumber})`);
-
-    // Decrease stock for all products in a single transaction
     await productIds
       .reduce(
         (tx, productId, i) =>
           tx.patch(productId, (p) => p.dec({ stock: quantities[i] })),
-        writeClient.transaction()
+        writeClient.transaction().create(orderDoc)
       )
       .commit();
 
+    console.log(`Order created: ${orderNumber}`);
     console.log(`Stock updated for ${productIds.length} products`);
   } catch (error) {
     console.error("Error handling checkout.session.completed:", error);
