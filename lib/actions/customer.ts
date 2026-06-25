@@ -3,15 +3,15 @@
 import Stripe from "stripe";
 import { client, writeClient } from "@/sanity/lib/client";
 import { CUSTOMER_BY_EMAIL_QUERY } from "@/sanity/queries/customer";
-import { apiVersion } from "@/sanity/env";
 
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not defined");
 }
 
-const stripeApiVersion =
-  process.env.STRIPE_API_VERSION ?? "2026-02-25.clover";
+const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
+  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
+  "2026-02-25.clover";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: stripeApiVersion,
