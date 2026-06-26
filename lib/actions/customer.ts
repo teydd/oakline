@@ -1,17 +1,16 @@
 "use server";
 
 import Stripe from "stripe";
-import { client, writeClient } from "@/sanity/lib/client";
+import { writeClient } from "@/sanity/lib/client";
 import { CUSTOMER_BY_EMAIL_QUERY } from "@/sanity/queries/customer";
-
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not defined");
 }
 
-const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
-  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
-  "2026-02-25.clover";
+const stripeApiVersion = process.env.STRIPE_API_VERSION as
+  | Stripe.StripeConfig["apiVersion"]
+  | undefined;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: stripeApiVersion,
@@ -24,10 +23,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 export async function getOrCreateStripeCustomer(
   email: string,
   name: string,
-  clerkUserId: string
+  clerkUserId: string,
 ): Promise<{ stripeCustomerId: string; sanityCustomerId: string }> {
   // First, check if customer already exists in Sanity
-  const existingCustomer = await client.fetch(CUSTOMER_BY_EMAIL_QUERY, {
+  const existingCustomer = await writeClient.fetch(CUSTOMER_BY_EMAIL_QUERY, {
     email,
   });
 
