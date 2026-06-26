@@ -2,24 +2,22 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import Stripe from "stripe";
-import { client } from "@/sanity/lib/client";
-
 import { getOrCreateStripeCustomer } from "@/lib/actions/customer";
+import { client } from "@/sanity/lib/client";
 import { PRODUCTS_BY_IDS_QUERY } from "@/sanity/queries/products";
-import { CartItem } from "../store/cart-store";
+import type { CartItem } from "../store/cart-store";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not defined");
 }
 
-const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
-  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
-  "2026-02-25.clover";
+const stripeApiVersion = process.env.STRIPE_API_VERSION as
+  | Stripe.StripeConfig["apiVersion"]
+  | undefined;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: stripeApiVersion,
 });
-
 
 interface CheckoutResult {
   success: boolean;
@@ -32,7 +30,7 @@ interface CheckoutResult {
  * Validates stock and prices against Sanity before creating session
  */
 export async function createCheckoutSession(
-  items: CartItem[]
+  items: CartItem[],
 ): Promise<CheckoutResult> {
   try {
     // 1. Verify user is authenticated
@@ -63,7 +61,7 @@ export async function createCheckoutSession(
 
     for (const item of items) {
       const product = products.find(
-        (p: { _id: string }) => p._id === item.productId
+        (p: { _id: string }) => p._id === item.productId,
       );
 
       if (!product) {
@@ -78,7 +76,7 @@ export async function createCheckoutSession(
 
       if (item.quantity > (product.stock ?? 0)) {
         validationErrors.push(
-          `Only ${product.stock} of "${product.name}" available`
+          `Only ${product.stock} of "${product.name}" available`,
         );
         continue;
       }
@@ -136,13 +134,11 @@ export async function createCheckoutSession(
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card","paypal"],
+      payment_method_types: ["card", "paypal"],
       line_items: lineItems,
       customer: stripeCustomerId,
       shipping_address_collection: {
-        allowed_countries: [
-            "KE"
-        ],
+        allowed_countries: ["KE"],
       },
       metadata,
       success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
