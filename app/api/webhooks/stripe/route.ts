@@ -1,9 +1,8 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { client, writeClient } from "@/sanity/lib/client";
+import { writeClient } from "@/sanity/lib/client";
 import { ORDER_BY_STRIPE_PAYMENT_ID_QUERY } from "@/sanity/queries/order";
-
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not defined");
@@ -13,9 +12,9 @@ if (!process.env.STRIPE_WEBHOOK_SECRET) {
   throw new Error("STRIPE_WEBHOOK_SECRET is not defined");
 }
 
-const stripeApiVersion: Stripe.StripeConfig["apiVersion"] =
-  (process.env.STRIPE_API_VERSION as Stripe.StripeConfig["apiVersion"]) ??
-  "2026-02-25.clover";
+const stripeApiVersion = process.env.STRIPE_API_VERSION as
+  | Stripe.StripeConfig["apiVersion"]
+  | undefined;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: stripeApiVersion,
@@ -31,7 +30,7 @@ export async function POST(req: Request) {
   if (!signature) {
     return NextResponse.json(
       { error: "Missing stripe-signature header" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -44,7 +43,7 @@ export async function POST(req: Request) {
     console.error("Webhook signature verification failed:", message);
     return NextResponse.json(
       { error: `Webhook Error: ${message}` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -63,17 +62,25 @@ export async function POST(req: Request) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const stripePaymentId = session.payment_intent as string;
+  const stripePaymentId = session.payment_intent ?? session.id;
+
+  if (!stripePaymentId) {
+    console.error("Missing Stripe payment identifier in checkout session");
+    return;
+  }
 
   try {
     // Idempotency check: prevent duplicate processing on webhook retries
-    const existingOrder = await client.fetch(ORDER_BY_STRIPE_PAYMENT_ID_QUERY, {
-      stripePaymentId,
-    });
+    const existingOrder = await writeClient.fetch(
+      ORDER_BY_STRIPE_PAYMENT_ID_QUERY,
+      {
+        stripePaymentId,
+      },
+    );
 
     if (existingOrder) {
       console.log(
-        `Webhook already processed for payment ${stripePaymentId}, skipping`
+        `Webhook already processed for payment ${stripePaymentId}, skipping`,
       );
       return;
     }
@@ -92,8 +99,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       return;
     }
 
-    const productIds = productIdsString.split(",");
-    const quantities = quantitiesString.split(",").map(Number);
+    const productIds = productIdsString
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const quantities = quantitiesString
+      .split(",")
+      .map((value) => Number.parseInt(value.trim(), 10))
+      .filter((value) => Number.isFinite(value));
     const productPricesString = session.metadata?.productPrices;
 
     if (!productPricesString) {
@@ -101,7 +114,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       return;
     }
 
-    const productPrices = productPricesString.split(",").map(Number);
+    const productPrices = productPricesString
+      .split(",")
+      .map((value) => Number.parseInt(value.trim(), 10))
+      .filter((value) => Number.isFinite(value));
 
     // Build order items array
     const orderItems = productIds.map((productId, index) => ({
@@ -150,13 +166,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       createdAt: new Date().toISOString(),
     };
 
-    await productIds
-      .reduce(
-        (tx, productId, i) =>
-          tx.patch(productId, (p) => p.dec({ stock: quantities[i] })),
-        writeClient.transaction().create(orderDoc)
-      )
-      .commit();
+    await writeClient.create(orderDoc);
+
+    for (const [index, productId] of productIds.entries()) {
+      await writeClient
+        .patch(productId)
+        .dec({ stock: quantities[index] ?? 0 })
+        .commit();
+    }
 
     console.log(`Order created: ${orderNumber}`);
     console.log(`Stock updated for ${productIds.length} products`);
